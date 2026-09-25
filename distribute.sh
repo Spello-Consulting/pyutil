@@ -5,8 +5,8 @@ distribute.sh — fan pyutil master scripts out to client projects
 pyutil is the source of truth for a small set of shared shell scripts. Each
 client project opts in by declaring, in its own pyproject.toml:
 
-    [tool.pyutil]
-    managed_scripts = ["launch.sh"]
+[tool.pyutil]
+managed_scripts = ["launch.sh"]
 
 This script finds every opted-in project under the dev root and copies the
 managed masters into <project>/scripts/, injecting a provenance header so a
