@@ -3,6 +3,10 @@
 Refresh from github
 
 Gets the latest version of this app from github. To only be used in deployed environments.
+
+Works on both Python projects and plain repos: if a pyproject.toml is present it
+reports the project name/version and runs "uv sync" after the refresh; if not
+(e.g. a deployed clone of pyutil itself) those Python-specific steps are skipped.
 =========================================================='
 
 # set -euo pipefail
@@ -10,6 +14,12 @@ Gets the latest version of this app from github. To only be used in deployed env
 print_help() {
   cat <<'EOF'
 Usage: gitrefresh.sh [options]
+
+Resets a deployed clone to the latest version of a branch from origin. If the
+repo has a pyproject.toml, the project name/version are reported and 'uv sync'
+runs after the refresh; without one (e.g. a deployed pyutil itself) those
+Python-specific steps are skipped and no service name is read from pyproject
+(pass --service to stop/start a service around the refresh).
 
 Options (CLI overrides environment variables):
   --branch <name>               Branch to reset to (env: BRANCH, default: main)
@@ -112,14 +122,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# 1. Inspect the pyproject.toml file and extract the project name and current version
+# 1. Inspect the pyproject.toml file (if present) and extract the project name,
+#    current version and service name. A pyproject.toml is optional so that this
+#    script can also refresh non-Python repos (e.g. a deployed pyutil itself).
 if [ -f "$PYPROJECT" ]; then
+    HAS_PYPROJECT=1
     CURRENT_VERSION=$(grep -E '^version *= *"' "$PYPROJECT" | head -1 | sed -E 's/^version *= *"([^"]+)".*$/\1/')
     PROJECT_NAME=$(grep -E '^name *= *"' "$PYPROJECT" | head -1 | sed -E 's/^name *= *"([^"]+)".*$/\1/')
     SERVICE=$(grep -E '^service_name *= *"' "$PYPROJECT" | head -1 | sed -E 's/^service_name *= *"([^"]+)".*$/\1/')
 else
-    echo "Error: $PYPROJECT not found."
-    exit 1
+    HAS_PYPROJECT=0
+    echo "[Refresh] No $PYPROJECT found; refreshing repo without a Python sync step."
+    CURRENT_VERSION=""
+    PROJECT_NAME=""
+    SERVICE=""
 fi
 
 # Allow CLI service override to take precedence
@@ -127,7 +143,7 @@ if [[ -n "$SERVICE_OVERRIDE" ]]; then
   SERVICE="$SERVICE_OVERRIDE"
 fi
 
-if [ -z "$CURRENT_VERSION" ]; then
+if [[ "$HAS_PYPROJECT" == "1" && -z "$CURRENT_VERSION" ]]; then
     echo "Error: version not defined in $PYPROJECT."
     exit 1
 fi
@@ -149,17 +165,25 @@ fi
 check_dev_environment
 remote_url="$REMOTE_URL"
 
-# 8. Find uv reliably (systemd often has a minimal PATH)
-if command -v uv >/dev/null 2>&1; then
-  UVCmd="$(command -v uv)"
-elif [ -x "$HOME/.local/bin/uv" ]; then
-  UVCmd="$HOME/.local/bin/uv"
-else
-  echo "[Refresh from Github] Error: 'uv' not found in PATH or at \$HOME/.local/bin/uv" >&2
-  exit 1
+# 8. Find uv reliably (systemd often has a minimal PATH). Only required when a
+#    pyproject.toml is present, since that drives the 'uv sync' step below.
+UVCmd=""
+if [[ "$HAS_PYPROJECT" == "1" ]]; then
+  if command -v uv >/dev/null 2>&1; then
+    UVCmd="$(command -v uv)"
+  elif [ -x "$HOME/.local/bin/uv" ]; then
+    UVCmd="$HOME/.local/bin/uv"
+  else
+    echo "[Refresh from Github] Error: 'uv' not found in PATH or at \$HOME/.local/bin/uv" >&2
+    exit 1
+  fi
 fi
 
-echo "Project $PROJECT_NAME (v$CURRENT_VERSION): Starting refresh from branch '$BRANCH'"
+if [[ "$HAS_PYPROJECT" == "1" ]]; then
+  echo "Project $PROJECT_NAME (v$CURRENT_VERSION): Starting refresh from branch '$BRANCH'"
+else
+  echo "Repo $(basename "$REPO_ROOT"): Starting refresh from branch '$BRANCH'"
+fi
 if [[ -n "$SERVICE" ]]; then
   echo "The $SERVICE service will be stopped during this process."
 fi
@@ -227,7 +251,11 @@ fi
 echo "[Refresh] Resetting '$BRANCH' to origin/$BRANCH..."
 git reset --hard "origin/$BRANCH"
 
-echo "[Refresh] Running 'uv sync'..."
-"$UVCmd" sync
+if [[ "$HAS_PYPROJECT" == "1" ]]; then
+  echo "[Refresh] Running 'uv sync'..."
+  "$UVCmd" sync
+else
+  echo "[Refresh] No pyproject.toml; skipping 'uv sync'."
+fi
 
 echo "[Refresh] Done."
