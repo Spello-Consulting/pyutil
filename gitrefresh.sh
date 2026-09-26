@@ -218,11 +218,18 @@ if [[ "$STASH_BEFORE_REFRESH" == "1" ]]; then
   fi
 fi
 
-# Fetch before branch switching so remote branches are discoverable
+# Fetch before branch switching so remote branches are discoverable.
+# A failed fetch must be fatal: if we continued, the later 'reset --hard
+# origin/$BRANCH' would silently pin the tree to the last-fetched (stale)
+# ref and report success, hiding auth/network failures (see issue #16).
 echo "[Refresh] Fetching origin (including branch '$BRANCH')..."
 if ! git fetch origin "$BRANCH" --tags; then
-  echo "[Refresh] Warning: fetch of specific branch failed; fetching all."
-  git fetch origin --tags
+  echo "[Refresh] Warning: fetch of specific branch failed; retrying with fetch-all."
+  if ! git fetch origin --tags; then
+    echo "[Refresh] Error: fetch from origin failed; aborting to avoid deploying stale code." >&2
+    echo "[Refresh] Check remote access (e.g. credentials/network) and retry." >&2
+    exit 7
+  fi
 fi
 
 # Ensure we are on the requested branch; create local tracking if only remote exists
