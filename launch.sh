@@ -44,19 +44,33 @@ ScriptDir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SelfPath="$ScriptDir/$(basename "${BASH_SOURCE[0]}")"
 HomeDir=""
 LaunchOverride=""
+# --launch is a launcher-only flag, so strip it (and its value) from "$@" here — the
+# app never sees it. --homedir is left in place, matching existing behaviour.
+RemainingArgs=()
+skip_next=false
 for ((i=1; i<=$#; i++)); do
-  if [ "${!i}" = "--homedir" ]; then
+  arg="${!i}"
+  if $skip_next; then
+    skip_next=false
+    continue
+  fi
+  if [ "$arg" = "--homedir" ]; then
     j=$((i+1))
     if [ $j -le $# ]; then
       HomeDir="${!j}"
     fi
-  elif [ "${!i}" = "--launch" ]; then
+    RemainingArgs+=("$arg")
+  elif [ "$arg" = "--launch" ]; then
     j=$((i+1))
     if [ $j -le $# ]; then
       LaunchOverride="${!j}"
+      skip_next=true
     fi
+  else
+    RemainingArgs+=("$arg")
   fi
 done
+set -- "${RemainingArgs[@]}"
 
 # If --homedir was not provided, locate the directory containing pyproject.toml
 if [ -z "$HomeDir" ]; then
