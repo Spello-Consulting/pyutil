@@ -19,20 +19,6 @@ service_name entries in pyproject.toml.
 
 PYPROJECT="pyproject.toml"
 
-# Basic sanity checks
-if [ "$(uname -s)" = "Darwin" ]; then
-	echo "Error: servicectrl.sh is not supported on macOS because it requires systemd." >&2
-	exit 1
-fi
-
-if [ "$(id -u)" -ne 0 ]; then
-	echo "Error: this script requires root privileges. Please run with sudo." >&2
-	exit 1
-fi
-
-# Get the current working directory
-CURRENT_DIR=$(pwd)
-
 # -------------------------------------------------------------------------
 # Parse the service_name entry from pyproject.toml into the SERVICES array.
 # Accepts either a quoted scalar (service_name = "safe-share") or a TOML array
@@ -63,6 +49,20 @@ parse_service_names() {
 	fi
 }
 
+# Basic sanity checks
+if [ "$(uname -s)" = "Darwin" ]; then
+	echo "Error: servicectrl.sh is not supported on macOS because it requires systemd." >&2
+	exit 1
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "Error: this script requires root privileges. Please run with sudo." >&2
+	exit 1
+fi
+
+# Get the current working directory
+CURRENT_DIR=$(pwd)
+
 # Get the current version and name from pyproject.toml
 if [ -f "$PYPROJECT" ]; then
     CURRENT_VERSION=$(grep -E '^version *= *"' "$PYPROJECT" | head -1 | sed -E 's/^version *= *"([^"]+)".*$/\1/')
@@ -73,20 +73,23 @@ else
     exit 1
 fi
 
-if [ ${#SERVICES[@]} -eq 0 ]; then
-	echo "Error: service_name not defined in $PYPROJECT."
-	exit 1
-fi
-
 UserID=${SUDO_USER:-$USER}
 
 usage() {
-	echo "Usage: $0 [--service <name>] {start|stop|restart|reload|disable|enable|status|is-active|logs|edit|help}"
+	echo "Usage: $0 [--service <name>] {start|stop|restart|reload|disable|enable|status|is-active|logs|edit|list|help}"
 	echo "       $0 [--service <name>] deploy <environment>"
 	echo ""
 	echo "  --service <name>, -s <name>   Act on a single service (must be one of: ${SERVICES[*]})."
 	echo "                                Without it, the command acts on every defined service."
 	exit 1
+}
+
+list_services() {
+	if [ ${#SERVICES[@]} -eq 0 ]; then
+		echo "None"
+	else
+		printf '%s\n' "${SERVICES[@]}"
+	fi
 }
 
 service_file_path() {
@@ -146,6 +149,7 @@ help() {
 	echo "  status  			  Show the current status of the service(s)"
 	echo "  is-active			  Show whether the service(s) are active (running)"
 	echo "  logs    			  Tail the live service logs (journalctl -f)"
+	echo "  list    			  List the service(s) defined in $PYPROJECT (\"None\" if there are none)"
 	echo "  help     			  Show this help message"
 	exit 0
 }
@@ -204,6 +208,16 @@ fi
 
 if [ "$1" = "help" ]; then
 	help
+fi
+
+if [ "$1" = "list" ]; then
+	list_services
+	exit 0
+fi
+
+if [ ${#SERVICES[@]} -eq 0 ]; then
+	echo "Error: service_name not defined in $PYPROJECT."
+	exit 1
 fi
 
 echo "Managing service(s) '${TARGET_SERVICES[*]}' for project '$PROJECT_NAME' (v$CURRENT_VERSION) - action: $1"

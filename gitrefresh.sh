@@ -18,8 +18,8 @@ Usage: gitrefresh.sh [options]
 Resets a deployed clone to the latest version of a branch from origin. If the
 repo has a pyproject.toml, the project name/version are reported and 'uv sync'
 runs after the refresh; without one (e.g. a deployed pyutil itself) those
-Python-specific steps are skipped and no service name is read from pyproject
-(pass --service to stop/start a service around the refresh).
+Python-specific steps are skipped. On Linux, the service(s) listed by
+servicectrl.sh are stopped (via sudo) before the refresh.
 
 Options (CLI overrides environment variables):
   --branch <name>               Branch to reset to (env: BRANCH, default: main)
@@ -29,7 +29,7 @@ Options (CLI overrides environment variables):
   --block-path-patterns <list>  Colon-separated substrings; if repo path contains any -> block (env: BLOCK_PATH_PATTERNS)
   --require-remote-host <host>  Require origin remote URL to contain this host (env: REQUIRE_REMOTE_HOST)
   --stash-before-refresh <0|1>  If 1, stash tracked changes before refresh (env: STASH_BEFORE_REFRESH, default: 1)
-  --service <name>              Service name to stop/start around refresh (overrides pyproject service_name)
+  --service <name>              Stop only this service (must be defined in pyproject service_name) instead of all of them
   --yes                         Non-interactive; skip confirmation prompt
   --help                        Show this help and exit
 
@@ -129,18 +129,11 @@ if [ -f "$PYPROJECT" ]; then
     HAS_PYPROJECT=1
     CURRENT_VERSION=$(grep -E '^version *= *"' "$PYPROJECT" | head -1 | sed -E 's/^version *= *"([^"]+)".*$/\1/')
     PROJECT_NAME=$(grep -E '^name *= *"' "$PYPROJECT" | head -1 | sed -E 's/^name *= *"([^"]+)".*$/\1/')
-    SERVICE=$(grep -E '^service_name *= *"' "$PYPROJECT" | head -1 | sed -E 's/^service_name *= *"([^"]+)".*$/\1/')
 else
     HAS_PYPROJECT=0
     echo "[Refresh] No $PYPROJECT found; refreshing repo without a Python sync step."
     CURRENT_VERSION=""
     PROJECT_NAME=""
-    SERVICE=""
-fi
-
-# Allow CLI service override to take precedence
-if [[ -n "$SERVICE_OVERRIDE" ]]; then
-  SERVICE="$SERVICE_OVERRIDE"
 fi
 
 if [[ "$HAS_PYPROJECT" == "1" && -z "$CURRENT_VERSION" ]]; then
@@ -184,8 +177,26 @@ if [[ "$HAS_PYPROJECT" == "1" ]]; then
 else
   echo "Repo $(basename "$REPO_ROOT"): Starting refresh from branch '$BRANCH'"
 fi
-if [[ -n "$SERVICE" ]]; then
-  echo "The $SERVICE service will be stopped during this process."
+# servicectrl.sh needs systemd and root, so it is only used on Linux.
+SERVICECTRL="$(dirname "$0")/servicectrl.sh"
+SERVICECTRL_ARGS=()
+SERVICES=()
+if [[ "$(uname)" == "Linux" ]]; then
+  if [[ -n "$SERVICE_OVERRIDE" ]]; then
+    SERVICECTRL_ARGS=(--service "$SERVICE_OVERRIDE")
+    SERVICES=("$SERVICE_OVERRIDE")
+  elif [[ "$HAS_PYPROJECT" == "1" ]]; then
+    if ! SERVICE_LIST="$(sudo "$SERVICECTRL" list)"; then
+      echo "[Refresh] Error: unable to list services via servicectrl.sh." >&2
+      exit 1
+    fi
+    while IFS= read -r svc; do
+      [[ -n "$svc" && "$svc" != "None" ]] && SERVICES+=("$svc")
+    done <<< "$SERVICE_LIST"
+  fi
+fi
+if [[ ${#SERVICES[@]} -gt 0 ]]; then
+  echo "The following service(s) will be stopped before the refresh: ${SERVICES[*]}"
 fi
 
 if [[ "$YES_MODE" -ne 1 ]]; then
@@ -196,17 +207,18 @@ if [[ "$YES_MODE" -ne 1 ]]; then
   fi
 fi
 
-# If SERVICE is defined, stop it before refreshing
-if [[ -n "$SERVICE" ]] && [[ "$(uname)" == "Linux" ]]; then
-  echo "[Refresh] Stopping service '$SERVICE' before refresh..."
-  sudo systemctl stop "$SERVICE"
+if [[ ${#SERVICES[@]} -gt 0 ]]; then
+  echo "[Refresh] Stopping service(s) before refresh: ${SERVICES[*]}"
+  sudo "$SERVICECTRL" "${SERVICECTRL_ARGS[@]}" stop
 
   sleep 3
 
-  if systemctl is-active --quiet "$SERVICE"; then
-    echo "[Refresh] Error: Service '$SERVICE' is still running after stop command." >&2
-    exit 1
-  fi
+  for svc in "${SERVICES[@]}"; do
+    if systemctl is-active --quiet "$svc"; then
+      echo "[Refresh] Error: Service '$svc' is still running after stop command." >&2
+      exit 1
+    fi
+  done
 fi
 
 # Stash tracked changes only (no -u) based on setting
