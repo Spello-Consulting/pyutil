@@ -235,9 +235,9 @@ fi
 # origin/$BRANCH' would silently pin the tree to the last-fetched (stale)
 # ref and report success, hiding auth/network failures (see issue #16).
 echo "[Refresh] Fetching origin (including branch '$BRANCH')..."
-if ! git fetch origin "$BRANCH" --tags; then
+if ! git fetch origin "$BRANCH" --tags --force; then
   echo "[Refresh] Warning: fetch of specific branch failed; retrying with fetch-all."
-  if ! git fetch origin --tags; then
+  if ! git fetch origin --tags --force; then
     echo "[Refresh] Error: fetch from origin failed; aborting to avoid deploying stale code." >&2
     echo "[Refresh] Check remote access (e.g. credentials/network) and retry." >&2
     exit 7
