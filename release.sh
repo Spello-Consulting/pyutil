@@ -2,17 +2,31 @@
 : '=======================================================
 Release
 
-Stages, commits and pushes a new release of the project to git.
+Stages, commits, tags and pushes a new release of the project to git.
+
+Usage: release.sh <version> <comment>
+
+The version in pyproject.toml is set to <version> (it may already be
+set, e.g. if it was bumped by hand) and the release is tagged
+v<version>. All checks that can fail are done before anything is
+changed, and the script refuses to run if tag v<version> already
+exists locally or on origin.
 =========================================================='
 
 # set -euo pipefail
 
 PYPROJECT="pyproject.toml"
+RELEASE_BRANCH="main"
+
+# Print the value of a key in the [project] table of pyproject.toml.
+read_project_key() {
+    sed -n -E '/^\[project\]/,/^\[/ s/^'"$1"' *= *"([^"]+)".*$/\1/p' "$PYPROJECT" | head -1
+}
 
 # Get the current version from pyproject.toml, or hand off to nopy_release.sh
 if [ -f "$PYPROJECT" ]; then
-    CURRENT_VERSION=$(grep -E '^version *= *"' "$PYPROJECT" | head -1 | sed -E 's/^version *= *"([^"]+)".*$/\1/')
-    PROJECT_NAME=$(grep -E '^name *= *"' "$PYPROJECT" | head -1 | sed -E 's/^name *= *"([^"]+)".*$/\1/')
+    CURRENT_VERSION=$(read_project_key version)
+    PROJECT_NAME=$(read_project_key name)
 else
     NOPY_SCRIPT="$(dirname "$0")/nopy_release.sh"
     if [ ! -f "$NOPY_SCRIPT" ]; then
@@ -23,8 +37,8 @@ else
 fi
 
 if [ -z "$CURRENT_VERSION" ]; then
-	echo "Error: version not defined in $PYPROJECT."
-	exit 1
+    echo "Error: version not defined in the [project] table of $PYPROJECT."
+    exit 1
 fi
 
 # Check arguments
@@ -32,8 +46,40 @@ if [ "$#" -ne 2 ]; then
     echo "Usage: $0 <version> <comment>"
     exit 1
 fi
-VERSION=$1
+VERSION=${1#v}   # accept "1.2.3" or "v1.2.3"
 COMMENT=$2
+TAG="v$VERSION"
+
+if [ -z "$VERSION" ] || ! git check-ref-format "refs/tags/$TAG"; then
+    echo "Error: '$1' is not a valid version for a git tag."
+    exit 1
+fi
+
+# Make sure we are releasing from the release branch of a git repo
+CURRENT_BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null)
+if [ $? -ne 0 ]; then
+    echo "Error: not in a git repository, or HEAD is detached."
+    exit 1
+fi
+if [ "$CURRENT_BRANCH" != "$RELEASE_BRANCH" ]; then
+    echo "Error: releases must be made from '$RELEASE_BRANCH' (current branch is '$CURRENT_BRANCH')."
+    exit 1
+fi
+
+# Make sure the release tag doesn't already exist, locally or on origin
+if git rev-parse --quiet --verify "refs/tags/$TAG" > /dev/null; then
+    echo "Error: tag $TAG already exists locally. Choose a new version number."
+    exit 1
+fi
+REMOTE_TAG=$(git ls-remote --tags origin "refs/tags/$TAG")
+if [ $? -ne 0 ]; then
+    echo "Error: could not query tags on origin."
+    exit 1
+fi
+if [ -n "$REMOTE_TAG" ]; then
+    echo "Error: tag $TAG already exists on origin. Choose a new version number."
+    exit 1
+fi
 
 # Make sure our virtual environment is activated
 if [ -z "$VIRTUAL_ENV" ]; then
@@ -69,6 +115,9 @@ fi
 echo "Project:         $PROJECT_NAME"
 echo "Current version: $CURRENT_VERSION"
 echo "New version:     $VERSION"
+if [ "$VERSION" = "$CURRENT_VERSION" ]; then
+    echo "                 ($PYPROJECT is already at this version; it will still be tagged $TAG)"
+fi
 echo "Comment:         $COMMENT"
 echo
 read -p "Enter Y to continue, any other key to abort: " CONFIRM
@@ -98,9 +147,17 @@ if [ "$DOCS_NEEDED" = true ]; then
     fi
 fi
 
-# Update the version in pyproject.toml
-echo "Updating version in $PYPROJECT to $VERSION..."
-sed -i '' -E "s/(^version *= *\").*(\")/\1$VERSION\2/" "$PYPROJECT"
+# Update the version in the [project] table of pyproject.toml
+if [ "$VERSION" != "$CURRENT_VERSION" ]; then
+    echo "Updating version in $PYPROJECT to $VERSION..."
+    sed -i.bak -E '/^\[project\]/,/^\[/ s/^(version *= *")[^"]*(")/\1'"$VERSION"'\2/' "$PYPROJECT"
+    SED_STATUS=$?
+    rm -f "$PYPROJECT.bak"
+    if [ $SED_STATUS -ne 0 ] || [ "$(read_project_key version)" != "$VERSION" ]; then
+        echo "Error: failed to update version in $PYPROJECT."
+        exit 1
+    fi
+fi
 
 # Stage all changes
 echo "Staging changes..."
@@ -110,36 +167,38 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Commit with the provided comment
-echo "Committing changes..."
-git commit -m "$COMMENT"
-if [ $? -ne 0 ]; then
-    echo "Error: git commit failed."
-    exit 1
-fi
-
-# Tag the new release only if version changed
-if [ "$VERSION" != "$CURRENT_VERSION" ]; then
-    echo "Tagging release v$VERSION..."
-    git tag "v$VERSION"
+# Commit with the provided comment, unless there is nothing to commit
+if git diff --cached --quiet; then
+    echo "Nothing to commit; tagging the current HEAD."
+else
+    echo "Committing changes..."
+    git commit -m "$COMMENT"
     if [ $? -ne 0 ]; then
-        echo "Error: git tag failed."
+        echo "Error: git commit failed."
         exit 1
     fi
 fi
 
-# Push to origin
-echo "Pushing to origin main..."
-git push origin main
+# Tag the new release
+echo "Tagging release $TAG..."
+git tag "$TAG"
 if [ $? -ne 0 ]; then
-    echo "Error: git push main failed."
+    echo "Error: git tag $TAG failed."
     exit 1
 fi
 
-git push origin "v$VERSION"
-echo "Pushing to origin v$VERSION..."
+# Push to origin
+echo "Pushing to origin $RELEASE_BRANCH..."
+git push origin "$RELEASE_BRANCH"
 if [ $? -ne 0 ]; then
-    echo "Error: git push origin v$VERSION failed."
+    echo "Error: git push origin $RELEASE_BRANCH failed. Tag $TAG was created locally but not pushed."
+    exit 1
+fi
+
+echo "Pushing to origin $TAG..."
+git push origin "$TAG"
+if [ $? -ne 0 ]; then
+    echo "Error: git push origin $TAG failed. Retry with: git push origin $TAG"
     exit 1
 fi
 
@@ -153,4 +212,4 @@ if [ "$DOCS_NEEDED" = true ]; then
     fi
 fi
 
-echo "Release v$VERSION committed and pushed with comment: $COMMENT"
+echo "Release $TAG committed and pushed with comment: $COMMENT"

@@ -10,7 +10,7 @@ written and the process exit status.
 from __future__ import annotations
 
 import shutil
-import subprocess  # ruff: ignore[suspicious-subprocess-import]
+import subprocess  # noqa: S404
 from pathlib import Path
 
 import pytest
@@ -117,7 +117,7 @@ def run(pyutil_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
     Returns:
         The completed process, with stdout/stderr captured as text.
     """
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    return subprocess.run(  # noqa: S603
         [BASH, str(pyutil_dir / "distribute.sh"), *args],
         capture_output=True,
         text=True,

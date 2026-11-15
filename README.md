@@ -81,6 +81,32 @@ Using that header, `distribute.sh` tells three situations apart:
 So editing a project's copy directly is safe from silent clobbering — the next
 `distribute.sh` will refuse it and tell you, rather than overwrite it.
 
+## `release.sh` — cut a release
+
+Run from the root of the project being released, with its virtual environment
+activated:
+
+```bash
+~/dev/pyutil/release.sh <version> <comment>
+```
+
+It runs the tests (if there is a `tests/` folder) and builds the docs (if there
+is a `mkdocs.yml`), sets `version` in the `[project]` table of `pyproject.toml`,
+commits all changes with `<comment>`, tags the commit `v<version>`, pushes
+`main` and the tag, and finally deploys the docs to gh-pages. Projects without a
+`pyproject.toml` are handed off to `nopy_release.sh`, which does the same
+commit / tag / push using git tags alone for versioning.
+
+Things worth knowing:
+
+- `<version>` may be given as `1.2.3` or `v1.2.3`; the tag is always `v1.2.3`.
+- It's fine if `pyproject.toml` is already at `<version>` (e.g. bumped by
+  hand) — the release is still tagged.
+- If there's nothing left to commit, the current `HEAD` is tagged.
+- Before changing anything it checks that you're on `main` and that the tag
+  doesn't already exist locally or on `origin`; any failed step stops the
+  script with an error rather than carrying on.
+
 ## Development
 
 ```bash
