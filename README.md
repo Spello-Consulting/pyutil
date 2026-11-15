@@ -87,7 +87,7 @@ Run from the root of the project being released, with its virtual environment
 activated:
 
 ```bash
-~/dev/pyutil/release.sh <version> <comment>
+~/dev/pyutil/release.sh [--force] <version> <comment>
 ```
 
 It runs the tests (if there is a `tests/` folder) and builds the docs (if there
@@ -106,6 +106,11 @@ Things worth knowing:
 - Before changing anything it checks that you're on `main` and that the tag
   doesn't already exist locally or on `origin`; any failed step stops the
   script with an error rather than carrying on.
+- To re-release a version that's already tagged (e.g. to push a very minor
+  change without a version bump), pass `--force` (or `-f`). The changes are
+  committed and pushed to `main`, and the existing tag is left where it is —
+  it is never moved. If the tag exists locally but was never pushed, it is
+  pushed as is.
 
 ## Development
 

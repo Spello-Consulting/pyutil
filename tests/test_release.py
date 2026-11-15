@@ -241,6 +241,25 @@ def reject_tag_pushes(origin: Path) -> None:
     hook.chmod(0o755)
 
 
+def mark_released(project: Path, env: dict[str, str], *, push_tag: bool) -> str:
+    """Set the project to version 1.0.1 and tag it, as a prior release would.
+
+    Args:
+        project: Working clone to release from.
+        env: Isolated git environment.
+        push_tag: Whether to push the ``v1.0.1`` tag (and ``main``) to origin.
+
+    Returns:
+        The commit the ``v1.0.1`` tag points to.
+    """
+    _write(project / "pyproject.toml", PYPROJECT.format(version="1.0.1"))
+    git(project, env, "commit", "--quiet", "-am", "Release 1.0.1")
+    git(project, env, "tag", "v1.0.1")
+    if push_tag:
+        git(project, env, "push", "--quiet", "origin", "main", "v1.0.1")
+    return git(project, env, "rev-parse", "HEAD")
+
+
 # --------------------------------------------------------------------------
 # release.sh
 # --------------------------------------------------------------------------
@@ -429,6 +448,102 @@ def test_release_hands_off_to_nopy_release(
     assert remote_tag_commit(origin, git_env, "v1.0.1")
 
 
+def test_release_existing_tag_error_suggests_force(
+    scripts_dir: Path,
+    py_project: Path,
+    git_env: dict[str, str],
+) -> None:
+    """The existing-tag error tells the user about ``--force``."""
+    mark_released(py_project, git_env, push_tag=True)
+
+    result = run(scripts_dir / "release.sh", py_project, git_env, "1.0.1", "Tweak")
+
+    assert result.returncode == 1
+    assert "use --force to re-release v1.0.1" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("--force", "1.0.1", "Tweak"),
+        ("1.0.1", "Tweak", "-f"),
+    ],
+)
+def test_release_force_rereleases_without_moving_tag(
+    scripts_dir: Path,
+    py_project: Path,
+    origin: Path,
+    git_env: dict[str, str],
+    args: tuple[str, ...],
+) -> None:
+    """``--force``/``-f`` pushes new changes and leaves the existing tag alone."""
+    tagged = mark_released(py_project, git_env, push_tag=True)
+    _write(py_project / "tweak.txt", "minor\n")
+
+    result = run(scripts_dir / "release.sh", py_project, git_env, *args)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Re-release:" in result.stdout
+    assert "Re-release of v1.0.1 committed and pushed" in result.stdout
+    head = git(py_project, git_env, "rev-parse", "HEAD")
+    assert head != tagged
+    assert git(py_project, git_env, "log", "-1", "--format=%s") == "Tweak"
+    assert git(origin, git_env, "rev-parse", "main") == head
+    assert git(py_project, git_env, "rev-parse", "v1.0.1^{commit}") == tagged
+    assert remote_tag_commit(origin, git_env, "v1.0.1") == tagged
+
+
+def test_release_force_pushes_unpushed_existing_tag(
+    scripts_dir: Path,
+    py_project: Path,
+    origin: Path,
+    git_env: dict[str, str],
+) -> None:
+    """A tag that only exists locally is pushed as is, not re-created."""
+    tagged = mark_released(py_project, git_env, push_tag=False)
+    _write(py_project / "tweak.txt", "minor\n")
+
+    result = run(
+        scripts_dir / "release.sh", py_project, git_env, "-f", "1.0.1", "Tweak"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert remote_tag_commit(origin, git_env, "v1.0.1") == tagged
+    assert git(origin, git_env, "rev-parse", "main") == git(
+        py_project, git_env, "rev-parse", "HEAD"
+    )
+
+
+def test_release_force_with_new_version_is_a_normal_release(
+    scripts_dir: Path,
+    py_project: Path,
+    origin: Path,
+    git_env: dict[str, str],
+) -> None:
+    """``--force`` has no effect when the version isn't tagged yet."""
+    result = run(
+        scripts_dir / "release.sh", py_project, git_env, "--force", "1.0.1", "New"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Re-release" not in result.stdout
+    head = git(py_project, git_env, "rev-parse", "HEAD")
+    assert remote_tag_commit(origin, git_env, "v1.0.1") == head
+
+
+def test_release_usage_error_counts_positional_args(
+    scripts_dir: Path,
+    py_project: Path,
+    git_env: dict[str, str],
+) -> None:
+    """``--force`` doesn't count towards the two required arguments."""
+    result = run(scripts_dir / "release.sh", py_project, git_env, "--force", "1.0.1")
+
+    assert result.returncode == 1
+    assert "Usage:" in result.stdout
+    assert "--force" in result.stdout
+
+
 # --------------------------------------------------------------------------
 # nopy_release.sh
 # --------------------------------------------------------------------------
@@ -505,3 +620,30 @@ def test_nopy_release_outside_git_repo(
 
     assert result.returncode == 1
     assert "Not a git repository" in result.stdout
+
+
+def test_nopy_release_force_rereleases_without_moving_tag(
+    scripts_dir: Path,
+    nopy_project: Path,
+    origin: Path,
+    git_env: dict[str, str],
+) -> None:
+    """``--force`` re-releases an existing tag without moving it."""
+    tagged = git(nopy_project, git_env, "rev-parse", "HEAD")
+    _write(nopy_project / "tweak.txt", "minor\n")
+
+    result = run(
+        scripts_dir / "nopy_release.sh",
+        nopy_project,
+        git_env,
+        "--force",
+        "1.0.0",
+        "Tweak",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Re-release of v1.0.0 committed and pushed" in result.stdout
+    head = git(nopy_project, git_env, "rev-parse", "HEAD")
+    assert head != tagged
+    assert git(origin, git_env, "rev-parse", "main") == head
+    assert remote_tag_commit(origin, git_env, "v1.0.0") == tagged
