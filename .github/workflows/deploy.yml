@@ -11,6 +11,8 @@ on:
           - sydneyapp
           - pi-spello
           - spelloapp
+          - MacMiniAU
+          - MacMiniIT
           - all
 
 jobs:
@@ -45,3 +47,29 @@ jobs:
         run: |
           sudo --chdir=/home/nick/scripts/pyutil /home/nick/scripts/pyutil/gitrefresh.sh --yes
 
+  deploy-MacMiniAU:
+    name: Deploy → MacMiniAU
+    if: ${{ inputs.environment == 'MacMiniAU' || inputs.environment == 'all' }}
+    runs-on: [self-hosted, MacMiniAU]
+    environment: MacMiniAU
+    steps:
+      - name: Pull latest from GitHub
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          cd ~/scripts/pyutil 
+          ~/scripts/pyutil/gitrefresh.sh --yes --branch "$BRANCH"
+
+  deploy-MacMiniIT:
+    name: Deploy → MacMiniIT
+    if: ${{ inputs.environment == 'MacMiniIT' || inputs.environment == 'all' }}
+    runs-on: [self-hosted, MacMiniIT]
+    environment: MacMiniIT
+    steps:
+      - name: Pull latest from GitHub
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          cd ~/scripts/pyutil 
+          ~/scripts/pyutil/gitrefresh.sh --yes --branch "$BRANCH"
+          
