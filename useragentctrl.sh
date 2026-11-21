@@ -41,12 +41,17 @@ TEMPLATE="$CURRENT_DIR/deploy/$PLIST_NAME"
 TARGET_PLIST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 SERVICE_TARGET="gui/$(id -u)/$LABEL"
 
+YES_MODE=0
+
 usage() {
-	echo "Usage: $0 {deploy|status|run|reload|disable|remove|edit|help}"
+	echo "Usage: $0 [--yes] {deploy|status|run|reload|disable|remove|edit|help}"
 	exit 1
 }
 
 confirm() {
+	if [ "$YES_MODE" -eq 1 ]; then
+		return 0
+	fi
 	read -r -p "$1 Enter Y to continue, any other key to abort: " CONFIRM
 	if [[ "$CONFIRM" != "Y" && "$CONFIRM" != "y" ]]; then
 		echo "Aborted."
@@ -121,7 +126,10 @@ run_agent() {
 help() {
 	echo "User Agent Control - manage the '$LABEL' launchd user agent"
 	echo ""
-	echo "Usage: $0 <command>"
+	echo "Usage: $0 [--yes] <command>"
+	echo ""
+	echo "Options:"
+	echo "  --yes                    Non-interactive; skip confirmation prompt"
 	echo ""
 	echo "Commands:"
 	echo "  deploy   			  Deploy the user agent plist from deploy/ and load it"
@@ -134,6 +142,16 @@ help() {
 	echo "  help     			  Show this help message"
 	exit 0
 }
+
+if [ $# -lt 1 ]; then
+	usage
+fi
+
+# Parse --yes flag if present
+if [ "$1" = "--yes" ]; then
+	YES_MODE=1
+	shift
+fi
 
 if [ $# -ne 1 ]; then
 	usage
