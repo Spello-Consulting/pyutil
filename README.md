@@ -118,3 +118,4 @@ Things worth knowing:
 uv run pytest          # test suite (tests/)
 uv run ruff check .    # lint (uses ~/.config/ruff/ruff.toml)
 ```
+
