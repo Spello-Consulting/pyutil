@@ -27,7 +27,7 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
-          cd ~/scripts/pyutil 
+          cd /home/nick/scripts/pyutil 
           git fetch origin
           git reset --hard "origin/$BRANCH"
 
@@ -62,7 +62,7 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
-          cd ~/scripts/pyutil 
+          cd /home/nick/scripts/pyutil 
           git fetch origin
           git reset --hard "origin/$BRANCH"
 
