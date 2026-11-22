@@ -27,8 +27,8 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
-          sudo --chdir=/home/nick/scripts/pyutil git fetch origin
-          sudo --chdir=/home/nick/scripts/pyutil git reset --hard "origin/$BRANCH"
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil fetch origin
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard "origin/$BRANCH"
 
 
   deploy-pi-spello:
