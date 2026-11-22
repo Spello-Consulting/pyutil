@@ -24,8 +24,12 @@ jobs:
     environment: sydneyapp        # triggers approval gate if configured in GitHub
     steps:
       - name: Pull latest from GitHub
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
-          sudo --chdir=/home/nick/scripts/pyutil /home/nick/scripts/pyutil/gitrefresh.sh --yes
+          cd ~/scripts/pyutil 
+          git fetch origin
+          git reset --hard "origin/$BRANCH"
 
 
   deploy-pi-spello:
