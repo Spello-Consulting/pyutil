@@ -15,6 +15,7 @@ on:
           - MacMiniIT
           - all
 
+# Note: We use git commands here rather than the gitrefresh.sh script so avoid conflicts with the script's behavior
 jobs:
   deploy-sydneyapp:
     name: Deploy → sydneyapp
@@ -58,7 +59,8 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           cd ~/scripts/pyutil 
-          ~/scripts/pyutil/gitrefresh.sh --yes --branch "$BRANCH"
+          git fetch origin
+          git reset --hard "origin/$BRANCH"
 
   deploy-MacMiniIT:
     name: Deploy → MacMiniIT
