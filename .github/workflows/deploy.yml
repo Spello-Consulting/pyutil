@@ -38,8 +38,8 @@ jobs:
     steps:
       - name: Pull latest from GitHub
         run: |
-          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil fetch origin
-          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard origin/main
+          sudo -n -u pi /usr/bin/git -C /home/pi/scripts/pyutil fetch origin
+          sudo -n -u pi /usr/bin/git -C /home/pi/scripts/pyutil reset --hard origin/main
 
   deploy-spelloapp:
     name: Deploy → spelloapp
