@@ -38,6 +38,7 @@ done
 # the first descriptive comment line found in the file.
 declare -A DESCRIPTIONS=(
   [check_git_changes.sh]="Scan the subfolders of a dev directory and report, for each Git repo found, any local uncommitted changes and any remote changes not yet pulled."
+  [deploy_check.sh]="Read-only check that this host, and the project in the current folder, are set up for auto-deployment (runner, sudoers, uv, safe.directory, file ownership, deploy.yml, auto-deploy.yaml). Prints the fix for each problem. Run from the project folder: ~/scripts/pyutil/deploy_check.sh."
   [git_dev_env_check.sh]="Shared library (not run directly) sourced by gitrefresh.sh and gitpush.sh to refuse running against a dev checkout instead of a deployed clone."
   [gitpush.sh]="Commit and push locally modified, already-tracked files back to the remote repo. For use in deployed environments, e.g. to push a modified config file back."
   [gitrefresh.sh]="Reset a deployed clone to the latest version from GitHub, optionally stopping/starting a service around the refresh. Works on Python projects (runs 'uv sync') and plain repos without a pyproject.toml. When run as root, runs git and uv as the clone's owner and fixes any files not owned by them. For use in deployed environments."

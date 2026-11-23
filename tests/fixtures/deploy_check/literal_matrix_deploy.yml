@@ -1,0 +1,17 @@
+name: Deploy Demo
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [sydneyapp, spelloapp, all]
+jobs:
+  deploy:
+    runs-on: [self-hosted, "${{ matrix.host }}"]
+    environment:
+      name: ${{ matrix.host }}
+    strategy:
+      matrix:
+        host: [sydneyapp]
+    steps:
+      - run: echo hello

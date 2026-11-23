@@ -81,6 +81,73 @@ Using that header, `distribute.sh` tells three situations apart:
 So editing a project's copy directly is safe from silent clobbering — the next
 `distribute.sh` will refuse it and tell you, rather than overwrite it.
 
+## `deploy_check.sh` — check a host is ready for auto-deployment
+
+Checks that the host it runs on, and the project in the current folder, are set
+up for auto-deployment as described in the
+[deployment guides](https://spello-consulting.github.io/automation/deployment/).
+Run the deployed copy from the project's folder:
+
+```bash
+cd ~/scripts/PowerController
+~/scripts/pyutil/deploy_check.sh
+```
+
+Each check prints `PASS`, `WARN`, `FAIL` or `SKIP`, and anything that isn't a
+pass says what to do about it. The exit status is `0` if nothing failed
+(warnings are allowed) and `1` otherwise. The script is **read-only**: it never
+changes anything, and it reads remotes with `git ls-remote`, so even the clones
+are left untouched.
+
+What it checks:
+
+- **Every host** — `git` and `curl` are installed; `~/scripts/pyutil` is a clone
+  of the org repo, on `main`, matching `origin/main`, with no local changes, and
+  owned entirely by the deploy user; pyutil's own `deploy.yml` has a job for
+  this host; the runner is registered with the organisation under the host's
+  name (and, if `gh` can see the org's runners, is online with that label).
+- **Linux** — the `github-runner` user exists with a locked password; the
+  runner's systemd service is enabled, running and runs as `github-runner`;
+  uv is in `~/.local/bin` and linked from `/usr/local/bin/uv`; pyutil is a git
+  `safe.directory`; `/etc/sudoers.d/github-runner` is valid and allows every
+  `sudo` call the deploy workflows make (with the line to add if not), and has
+  no unused legacy `git pull` lines.
+- **macOS** — Homebrew, `git` and `uv` are installed; the runner's LaunchAgent
+  is loaded and running; the runner's saved PATH (`.path`) includes uv and git.
+- **The project** — it is in `~/scripts/<Project>` with an org `origin` that can
+  be read without a password; every file is owned by the deploy user; it is on
+  `main` with no local changes; `.env.target` links to a production template
+  and the `APP_CONFIG` file it names exists; `deploy.yml` has this host as an
+  option and a job (or matrix entry) for it with `environment: <Host>`; on
+  Linux, the job's `sudo` calls are allowed; the systemd unit templates
+  (`deploy/<Host>/<service>.service`) or LaunchAgent plist
+  (`deploy/<user_agent_name>.plist`) exist; `deploy/auto-deploy.yaml` passes the
+  same rules the auto-deploy orchestrator applies; and the GitHub Environment
+  exists (if `gh` is available).
+
+The runner folder is found from its systemd unit or LaunchAgent, so runners
+installed somewhere other than the guide's location are still checked. The
+host name comes from the runner's registration, else `hostname -s`.
+
+Options:
+
+| Flag            | Effect                                                              |
+| --------------- | ------------------------------------------------------------------- |
+| `--project DIR` | Check this project folder instead of the current one.               |
+| `--host HOST`   | Host name / runner label to check for.                              |
+| `--host-only`   | Only check the host.                                                |
+| `--offline`     | Skip checks that use the network (`git ls-remote`, `gh`).           |
+| `--no-sudo`     | Never use sudo; root-only checks become warnings.                   |
+| `--no-color`    | Plain output.                                                       |
+
+On Linux some files (the sudoers file, the runner's folder) can only be read by
+root. If `sudo` needs a password, the script asks for it once up front (like
+`sudo -v`); press Ctrl-C and use `--no-sudo` to skip those checks.
+
+`deploy_check.sh` is a small wrapper that finds uv and runs `deploy_check.py`
+with the dependencies declared in that file (PyYAML), so nothing needs to be
+installed first.
+
 ## `release.sh` — cut a release
 
 Run from the root of the project being released, with its virtual environment
@@ -115,7 +182,8 @@ Things worth knowing:
 ## Development
 
 ```bash
-uv run pytest          # test suite (tests/)
-uv run ruff check .    # lint (uses ~/.config/ruff/ruff.toml)
+uv run pytest                                                   # test suite (tests/)
+uv run ruff check .                                             # lint (uses ~/.config/ruff/ruff.toml)
+uv run mypy --strict deploy_check.py tests/test_deploy_check.py # type check
 ```
 

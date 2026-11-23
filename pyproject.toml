@@ -7,8 +7,12 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.1",
     "pytest>=8",
+    "pyyaml>=6.0.4",
+    "types-pyyaml>=6.0.12.20261122",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

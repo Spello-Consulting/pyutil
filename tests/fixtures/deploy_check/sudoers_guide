@@ -1,0 +1,5 @@
+# /etc/sudoers.d/github-runner, as in "Set up a new Linux host" (with <User> = nick).
+github-runner ALL=(ALL) CWD=* NOPASSWD: /home/nick/scripts/pyutil/servicectrl.sh *
+github-runner ALL=(ALL) CWD=* NOPASSWD: /home/nick/scripts/pyutil/gitrefresh.sh *
+github-runner ALL=(nick) NOPASSWD: /usr/bin/git -C /home/nick/scripts/pyutil fetch origin
+github-runner ALL=(nick) NOPASSWD: /usr/bin/git -C /home/nick/scripts/pyutil reset --hard origin/main
