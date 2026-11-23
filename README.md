@@ -113,8 +113,7 @@ What it checks:
   `sudo` call the deploy workflows make (with the line to add if not), and has
   no unused legacy `git pull` lines.
 - **macOS** — Homebrew, `git` and `uv` are installed; the runner's LaunchAgent
-  is loaded and running; the runner's saved PATH (`.path`) includes uv and git;
-  the user logs in automatically.
+  is loaded and running; the runner's saved PATH (`.path`) includes uv and git.
 - **The project** — it is in `~/scripts/<Project>` with an org `origin` that can
   be read without a password; every file is owned by the deploy user; it is on
   `main` with no local changes; `.env.target` links to a production template

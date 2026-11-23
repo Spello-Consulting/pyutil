@@ -1934,13 +1934,6 @@ def check_host_macos(ctx: Context, sec: Section) -> None:
     check_macos_runner_service(ctx, sec)
     check_runner_path(ctx, sec)
 
-    auto = run(["defaults", "read", "/Library/Preferences/com.apple.loginwindow", "autoLoginUser"])
-    title = f"{ctx.user} logs in automatically"
-    if auto.ok and auto.stdout.strip() == ctx.user:
-        sec.ok(title)
-    else:
-        sec.warn(title, "the runner is a LaunchAgent, so it only runs while this user is logged in", f"System Settings → Users & Groups → Automatically log in as {ctx.user} (needs FileVault off), or make sure someone logs in after a restart")
-
 
 def check_macos_runner_service(ctx: Context, sec: Section) -> None:
     """Check the runner's LaunchAgent is installed, loaded and running.
