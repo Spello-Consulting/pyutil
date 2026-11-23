@@ -3,7 +3,7 @@
 Enabled: true
 
 # Hosts to deploy to automatically: a list of deploy.yml environment names, or "all".
-Environments: [spelloapp]
+Environments: [all]
 
 # When to deploy new commits. Use one of Interval or At.
 Schedule:
