@@ -26,11 +26,9 @@ jobs:
     environment: sydneyapp        # triggers approval gate if configured in GitHub
     steps:
       - name: Pull latest from GitHub
-        env:
-          BRANCH: ${{ github.ref_name }}
         run: |
           sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil fetch origin
-          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard "origin/$BRANCH"
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard origin/main
 
   deploy-pi-spello:
     name: Deploy → pi-spello
@@ -39,11 +37,9 @@ jobs:
     environment: pi-spello
     steps:
       - name: Pull latest from GitHub
-        env:
-          BRANCH: ${{ github.ref_name }}
         run: |
-          sudo -n -u pi /usr/bin/git -C /home/pi/scripts/pyutil fetch origin
-          sudo -n -u pi /usr/bin/git -C /home/pi/scripts/pyutil reset --hard "origin/$BRANCH"
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil fetch origin
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard origin/main
 
   deploy-spelloapp:
     name: Deploy → spelloapp
@@ -52,11 +48,9 @@ jobs:
     environment: spelloapp
     steps:
       - name: Pull latest from GitHub
-        env:
-          BRANCH: ${{ github.ref_name }}
         run: |
           sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil fetch origin
-          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard "origin/$BRANCH"
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard origin/main
 
   # The macOS runners run as nick, so no sudo is needed.
   deploy-MacMiniAU:
@@ -66,11 +60,9 @@ jobs:
     environment: MacMiniAU
     steps:
       - name: Pull latest from GitHub
-        env:
-          BRANCH: ${{ github.ref_name }}
         run: |
           git -C /Users/nick/scripts/pyutil fetch origin
-          git -C /Users/nick/scripts/pyutil reset --hard "origin/$BRANCH"
+          git -C /Users/nick/scripts/pyutil reset --hard origin/main
 
   deploy-MacMiniIT:
     name: Deploy → MacMiniIT
@@ -79,8 +71,6 @@ jobs:
     environment: MacMiniIT
     steps:
       - name: Pull latest from GitHub
-        env:
-          BRANCH: ${{ github.ref_name }}
         run: |
           git -C /Users/nick/scripts/pyutil fetch origin
-          git -C /Users/nick/scripts/pyutil reset --hard "origin/$BRANCH"
+          git -C /Users/nick/scripts/pyutil reset --hard origin/main
