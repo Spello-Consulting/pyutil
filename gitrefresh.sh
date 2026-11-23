@@ -7,6 +7,12 @@ Gets the latest version of this app from github. To only be used in deployed env
 Works on both Python projects and plain repos: if a pyproject.toml is present it
 reports the project name/version and runs "uv sync" after the refresh; if not
 (e.g. a deployed clone of pyutil itself) those Python-specific steps are skipped.
+
+When started as root (Linux deploys run "sudo --chdir=<project> gitrefresh.sh"),
+the git and uv commands run as the user who owns the clone, and any files in the
+clone not owned by that user are handed back to them first. Running git as root
+would otherwise leave root-owned files in .git (e.g. FETCH_HEAD), and the next
+git command run by the owner would then fail with "Permission denied".
 =========================================================='
 
 # set -euo pipefail
@@ -20,6 +26,9 @@ repo has a pyproject.toml, the project name/version are reported and 'uv sync'
 runs after the refresh; without one (e.g. a deployed pyutil itself) those
 Python-specific steps are skipped. On Linux, the service(s) listed by
 servicectrl.sh are stopped (via sudo) before the refresh.
+
+When run as root, git and uv run as the clone's owner, and any files in the
+clone owned by someone else are first chowned back to the owner.
 
 Options (CLI overrides environment variables):
   --branch <name>               Branch to reset to (env: BRANCH, default: main)
@@ -154,6 +163,55 @@ if [[ -z "$REPO_ROOT" ]]; then
   exit 3
 fi
 
+# 3b. Work out who to run git and uv as. When started as root, run them as the
+#     user who owns the clone (unless that is root too), so that git and uv never
+#     leave root-owned files behind in the owner's folder.
+path_owner_group() {
+  # GNU stat (Linux) first, then BSD stat (macOS). Prints "user:group".
+  stat -c '%U:%G' "$1" 2>/dev/null || stat -f '%Su:%Sg' "$1" 2>/dev/null
+}
+
+RUN_AS_OWNER=0
+REPO_OWNER=""
+REPO_GROUP=""
+if [[ "$(id -u)" == "0" ]]; then
+  _owner_group="$(path_owner_group "$REPO_ROOT")"
+  REPO_OWNER="${_owner_group%%:*}"
+  REPO_GROUP="${_owner_group#*:}"
+  if [[ -z "$REPO_OWNER" || -z "$REPO_GROUP" ]]; then
+    echo "[Refresh] Error: unable to determine the owner of $REPO_ROOT." >&2
+    exit 3
+  fi
+  if [[ "$REPO_OWNER" != "root" ]]; then
+    RUN_AS_OWNER=1
+    echo "[Refresh] Running as root; git and uv will run as the clone's owner, '$REPO_OWNER'."
+  fi
+fi
+
+# Run a command as the clone's owner when started as root, else as ourselves.
+as_owner() {
+  if [[ "$RUN_AS_OWNER" == "1" ]]; then
+    sudo -n -u "$REPO_OWNER" -H -- "$@"
+  else
+    "$@"
+  fi
+}
+
+# Hand any files in the clone that are not owned by its owner back to them, e.g.
+# .git/FETCH_HEAD or .venv left behind by an earlier refresh that ran as root.
+fix_repo_ownership() {
+  local wrong
+  wrong="$(find "$REPO_ROOT" ! -user "$REPO_OWNER" -print 2>/dev/null | head -n 5)"
+  [[ -z "$wrong" ]] && return 0
+  echo "[Refresh] Some files in $REPO_ROOT are not owned by '$REPO_OWNER', e.g.:"
+  while IFS= read -r f; do echo "[Refresh]   $f"; done <<< "$wrong"
+  echo "[Refresh] Fixing ownership: chown -R -h $REPO_OWNER:$REPO_GROUP $REPO_ROOT"
+  if ! chown -R -h "$REPO_OWNER:$REPO_GROUP" "$REPO_ROOT"; then
+    echo "[Refresh] Error: unable to fix ownership of $REPO_ROOT." >&2
+    exit 8
+  fi
+}
+
 # 4-7. Dev-environment guard checks (shared with gitpush.sh)
 check_dev_environment
 remote_url="$REMOTE_URL"
@@ -166,6 +224,10 @@ if [[ "$HAS_PYPROJECT" == "1" ]]; then
     UVCmd="$(command -v uv)"
   elif [ -x "$HOME/.local/bin/uv" ]; then
     UVCmd="$HOME/.local/bin/uv"
+  elif [[ "$RUN_AS_OWNER" == "1" ]] \
+    && _owner_home="$(as_owner sh -c 'printf %s "$HOME"')" \
+    && [ -x "$_owner_home/.local/bin/uv" ]; then
+    UVCmd="$_owner_home/.local/bin/uv"
   else
     echo "[Refresh from Github] Error: 'uv' not found in PATH or at \$HOME/.local/bin/uv" >&2
     exit 1
@@ -221,11 +283,15 @@ if [[ ${#SERVICES[@]} -gt 0 ]]; then
   done
 fi
 
+if [[ "$RUN_AS_OWNER" == "1" ]]; then
+  fix_repo_ownership
+fi
+
 # Stash tracked changes only (no -u) based on setting
 if [[ "$STASH_BEFORE_REFRESH" == "1" ]]; then
-  if ! git diff --quiet || ! git diff --cached --quiet; then
+  if ! as_owner git diff --quiet || ! as_owner git diff --cached --quiet; then
     echo "[Refresh] Stashing tracked changes..."
-    git stash push -m "pre-refresh $(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 \
+    as_owner git stash push -m "pre-refresh $(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 \
       || echo "[Refresh] Warning: git stash failed."
   fi
 fi
@@ -235,9 +301,9 @@ fi
 # origin/$BRANCH' would silently pin the tree to the last-fetched (stale)
 # ref and report success, hiding auth/network failures (see issue #16).
 echo "[Refresh] Fetching origin (including branch '$BRANCH')..."
-if ! git fetch origin "$BRANCH" --tags --force; then
+if ! as_owner git fetch origin "$BRANCH" --tags --force; then
   echo "[Refresh] Warning: fetch of specific branch failed; retrying with fetch-all."
-  if ! git fetch origin --tags --force; then
+  if ! as_owner git fetch origin --tags --force; then
     echo "[Refresh] Error: fetch from origin failed; aborting to avoid deploying stale code." >&2
     echo "[Refresh] Check remote access (e.g. credentials/network) and retry." >&2
     exit 7
@@ -250,13 +316,13 @@ if [[ "$current_branch" != "$BRANCH" ]]; then
   echo "[Refresh] Checking out branch '$BRANCH' (was on '$current_branch')."
   if git rev-parse --verify "refs/heads/$BRANCH" >/dev/null 2>&1; then
     # Local branch exists
-    if ! git checkout "$BRANCH"; then
+    if ! as_owner git checkout "$BRANCH"; then
       echo "[Refresh] Error: Failed to checkout existing local branch '$BRANCH'." >&2
       exit 6
     fi
   elif git rev-parse --verify "refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
     # Create local branch tracking remote
-    if ! git checkout -B "$BRANCH" "origin/$BRANCH"; then
+    if ! as_owner git checkout -B "$BRANCH" "origin/$BRANCH"; then
       echo "[Refresh] Error: Remote branch 'origin/$BRANCH' exists, but checkout -B failed." >&2
       exit 6
     fi
@@ -268,11 +334,11 @@ if [[ "$current_branch" != "$BRANCH" ]]; then
 fi
 
 echo "[Refresh] Resetting '$BRANCH' to origin/$BRANCH..."
-git reset --hard "origin/$BRANCH"
+as_owner git reset --hard "origin/$BRANCH"
 
 if [[ "$HAS_PYPROJECT" == "1" ]]; then
   echo "[Refresh] Running 'uv sync'..."
-  "$UVCmd" sync
+  as_owner "$UVCmd" sync
 else
   echo "[Refresh] No pyproject.toml; skipping 'uv sync'."
 fi
