@@ -1,0 +1,5 @@
+Enabled: true
+Environments: [sydneyapp, spelloapp]
+Schedule:
+  Interval: 6h
+TimeZone: Australia/Sydney

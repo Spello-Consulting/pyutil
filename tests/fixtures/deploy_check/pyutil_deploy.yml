@@ -1,0 +1,25 @@
+# Modelled on pyutil's own deploy workflow: plain git as the deploy user.
+name: Deploy pyutil
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [sydneyapp, MacMiniAU, all]
+jobs:
+  deploy-sydneyapp:
+    if: ${{ inputs.environment == 'sydneyapp' || inputs.environment == 'all' }}
+    runs-on: [self-hosted, sydneyapp]
+    environment: sydneyapp
+    steps:
+      - name: Pull latest from GitHub
+        run: |
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil fetch origin
+          sudo -n -u nick /usr/bin/git -C /home/nick/scripts/pyutil reset --hard origin/main
+  deploy-MacMiniAU:
+    runs-on: [self-hosted, MacMiniAU]
+    environment: MacMiniAU
+    steps:
+      - run: |
+          git -C /Users/nick/scripts/pyutil fetch origin
+          git -C /Users/nick/scripts/pyutil reset --hard origin/main

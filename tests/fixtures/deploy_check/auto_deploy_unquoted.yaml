@@ -1,0 +1,4 @@
+Enabled: true
+Environments: [sydneyapp]
+Schedule:
+  At: [14:30]

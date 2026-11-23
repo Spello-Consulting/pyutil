@@ -1,0 +1,9 @@
+# Older file: no CWD=*, a legacy pull line, an alias, and rules for other users.
+Defaults:github-runner !requiretty
+Cmnd_Alias DEPLOY = /usr/bin/systemctl restart demo
+github-runner ALL=(ALL) NOPASSWD: /home/nick/scripts/pyutil/servicectrl.sh *
+github-runner ALL=(ALL) NOPASSWD: /usr/bin/git -C /home/nick/scripts/Old pull, \
+    /usr/bin/git -C /home/nick/scripts/Demo pull
+github-runner ALL=(ALL) /usr/bin/reboot
+github-runner ALL=(ALL) NOPASSWD: /usr/bin/uptime ""
+nick ALL=(ALL) NOPASSWD: ALL
